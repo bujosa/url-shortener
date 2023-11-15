@@ -1,7 +1,8 @@
-use redis::AsyncCommands;
-use serde::de::DeserializeOwned;
+use redis::{AsyncCommands, RedisError};
+use serde::{de::DeserializeOwned, Serialize};
 
 /// A Redis client struct that contains a Redis client instance.
+#[derive(Clone)]
 pub struct RedisClient {
     pub client: redis::Client,
 }
@@ -23,9 +24,18 @@ impl RedisClient {
     /// # Returns
     ///
     /// A RedisResult that indicates whether the operation was successful or not.
-    pub async fn set_json(&self, key: String, b: serde_json::Value) -> redis::RedisResult<()> {
+    pub async fn set_json<T: Serialize>(&self, key: String, b: T) -> redis::RedisResult<()> {
         let mut con = self.client.get_async_connection().await?;
-        con.set(key, b.to_string()).await?;
+
+        let json = serde_json::to_string(&b).map_err(|err| {
+            RedisError::from((
+                redis::ErrorKind::TypeError,
+                "Serialization Error",
+                err.to_string(),
+            ))
+        })?;
+
+        con.set(key, json).await?;
 
         Ok(())
     }
